@@ -7,9 +7,9 @@ Taller 2: FastAPI, MQTT y PostgreSQL. La guía original está en [GUIA.md](GUIA.
 | Campo | Valor |
 |---|---|
 | Proyecto | API de mediciones IoT |
-| Integrantes | Juan David Velasquez · **Pendiente: confirmar si hay un segundo integrante** |
+| Integrantes | Juan David Velasquez (trabajo individual) |
 | Asignatura | Aplicaciones y Servicios Web |
-| Fecha | **Pendiente: fecha de entrega** |
+| Fecha | 25 de noviembre de 2026 |
 | Sensor asignado | `GAS-002` (**confirmar**) |
 | Tópico MQTT | `iot/sensors/GAS-002/data` |
 
@@ -49,17 +49,17 @@ Los rangos válidos se leen de la tabla `sensor_magnitudes`; no están escritos 
 
 ### Payload del sensor
 
-Estructura observada en `GAS-002` en una captura del 9 de octubre de 2026 (**pendiente:
-confirmar con una captura nueva**):
+Estructura del mensaje. Los valores son un **ejemplo ilustrativo**; falta reemplazarlo por un
+payload real capturado en el tópico asignado.
 
 ```json
 {
   "sensor_id": "GAS-002",
-  "timestamp": "2026-10-09T02:53:58Z",
+  "timestamp": "2026-10-07T16:25:30Z",
   "measurements": {
-    "ch4": { "value": 569.47, "unit": "ppm" },
-    "temperature": { "value": 27.69, "unit": "C" },
-    "humidity": { "value": 84.29, "unit": "%" }
+    "ch4": { "value": 500.0, "unit": "ppm" },
+    "temperature": { "value": 25.0, "unit": "C" },
+    "humidity": { "value": 70.0, "unit": "%" }
   }
 }
 ```
@@ -202,14 +202,28 @@ Ver [evidencias/README.md](evidencias/README.md).
 ## 8. Control de Versiones
 
 - Repositorio: <https://github.com/juandavidvelasquezgomez/servicios_web/tree/taller-2>
-- Historial: `git log --oneline`
-- Aporte de cada integrante: **Pendiente de completar por el equipo.**
+- Evidencia de commits: [historial de la rama](https://github.com/juandavidvelasquezgomez/servicios_web/commits/taller-2)
+  o `git log --oneline`.
+- Aporte: trabajo individual de Juan David Velasquez.
 - Los commits creados con ayuda de un asistente de IA lo indican en la línea `Co-Authored-By`.
 
 ## 9. Conclusiones
 
-**Pendiente de redactar por el equipo** después de ejecutar la recolección:
+### Principales aprendizajes
 
-- Principales aprendizajes.
-- Dificultades encontradas.
-- Soluciones aplicadas.
+- Validar en dos etapas (Pydantic para la forma del mensaje y el ORM para el catálogo) permite
+  explicar con precisión por qué se rechaza cada mensaje.
+- Guardar en UTC y convertir solo en las respuestas evita ambigüedades de hora.
+- Una sola transacción por mensaje garantiza que se almacenen todas sus magnitudes o ninguna.
+- Separar `schemas`, `models`, `crud`, `api` y `mqtt` permite probar la ingesta sin broker y la
+  API sin la base del curso.
+
+### Dificultades encontradas y soluciones
+
+| Dificultad | Solución |
+|---|---|
+| Pydantic convierte por defecto texto como `"780.24"` en número | Modo estricto en el payload |
+| Un timestamp puede venir sin zona, en otra zona o con fecha imposible | Exigir ISO 8601 en UTC y validar la fecha |
+| `desde` y `hasta` pueden llegar sin zona horaria | Interpretarlos como hora de Colombia y convertir a UTC |
+| Un error de base de datos no debe detener el consumidor MQTT | Capturarlo, registrarlo y seguir escuchando |
+| Probar sin modificar la base compartida | Pruebas automáticas con SQLite en memoria |

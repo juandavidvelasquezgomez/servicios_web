@@ -3,17 +3,31 @@
 Uso (con `uvicorn app.main:app` corriendo):
     python scripts/generar_evidencias.py --codigo GAS-002
 
-Escribe `evidencias/consultas_http.md` y `evidencias/mensajes_mqtt.md` solo con
-respuestas y líneas de registro reales; lo que no aparezca queda marcado como pendiente.
+Escribe en `evidencias/` los archivos `consultas_http.md`, `mensajes_mqtt.md` y
+`base_de_datos.md` solo con respuestas, líneas de registro y filas reales; lo que no
+aparezca queda marcado como pendiente.
 """
 
 import argparse
+import ast
 import json
 import re
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import httpx
+from dotenv import load_dotenv
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from app.crud import medicion as crud_medicion  # noqa: E402
+from app.crud import sensor as crud_sensor  # noqa: E402
+from app.database.connection import nueva_sesion  # noqa: E402
+from app.models import Medicion, SensorMagnitud  # noqa: E402
+from app.schemas.medicion import PATRON_UTC  # noqa: E402
 
 MAXIMO_ELEMENTOS = 5
 MOTIVOS = {
@@ -110,6 +124,62 @@ def resumen(lineas: list[str]) -> str:
     return texto
 
 
+def timestamp_del_mensaje(linea: str) -> datetime | None:
+    """Recupera el timestamp de una línea RECIBIDO; None si el mensaje no trae uno válido."""
+    try:
+        texto = ast.literal_eval(re.search(r" RECIBIDO \S+ (.*)$", linea).group(1))
+        valor = json.loads(texto)["timestamp"]
+        if not PATRON_UTC.fullmatch(valor):
+            return None
+        return datetime.fromisoformat(valor.replace("Z", "+00:00"))
+    except (AttributeError, KeyError, TypeError, ValueError, SyntaxError):
+        return None
+
+
+def base_de_datos(db: Session, lineas: list[str], codigo: str) -> str:
+    """Filas almacenadas y comprobación de que los mensajes rechazados no se guardaron."""
+    sensor = crud_sensor.obtener_por_codigo(db, codigo)
+    if sensor is None:
+        raise SystemExit(f"No existe el sensor {codigo} en la base de datos")
+    del_sensor = (
+        select(func.count())
+        .select_from(Medicion)
+        .join(Medicion.sensor_magnitud)
+        .where(SensorMagnitud.sensor_id == sensor.id)
+    )
+    partes = [
+        encabezado("Comprobación en la base de datos"),
+        f"- Sensor: `{codigo}` (id {sensor.id})\n"
+        f"- Mediciones almacenadas: {db.scalar(del_sensor)}\n",
+        "## 2 y 17. Últimas mediciones almacenadas y sus claves foráneas\n",
+        "| id | sensor_magnitud_id | sensor_id | magnitud | unidad | valor | timestamp_utc |",
+        "|---|---|---|---|---|---|---|",
+    ]
+    for m in crud_medicion.listar_por_sensor(db, sensor.id, limit=10):
+        partes.append(
+            f"| {m.id} | {m.sensor_magnitud_id} | {m.sensor_id} | {m.magnitud} | {m.unidad} "
+            f"| {m.valor} | {m.timestamp_utc.isoformat()} |"
+        )
+    partes += [
+        "\n## Mensajes rechazados que no se almacenaron\n",
+        "| Prueba | timestamp del mensaje | Registros con ese timestamp |",
+        "|---|---|---|",
+    ]
+    for titulo, marca in MOTIVOS.items():
+        indice = next((i for i, linea in enumerate(lineas) if marca in linea), None)
+        if indice is None:
+            partes.append(f"| {titulo} | Pendiente: no aparece en el registro | - |")
+            continue
+        previo = next((x for x in reversed(lineas[:indice]) if " RECIBIDO " in x), "")
+        momento = timestamp_del_mensaje(previo)
+        if momento is None:
+            partes.append(f"| {titulo} | sin timestamp válido para buscar | - |")
+            continue
+        total = db.scalar(del_sensor.where(Medicion.timestamp_utc == momento))
+        partes.append(f"| {titulo} | {momento.isoformat()} | {total} |")
+    return "\n".join(partes) + "\n"
+
+
 def encabezado(titulo: str) -> str:
     ahora = datetime.now(timezone.utc).isoformat(timespec="seconds")
     return f"# {titulo}\n\nGenerado por `scripts/generar_evidencias.py` el {ahora}.\n"
@@ -122,11 +192,19 @@ def main() -> None:
     argumentos.add_argument("--registro", type=Path, default=Path("logs/mqtt.log"))
     argumentos.add_argument("--salida", type=Path, default=Path("evidencias"))
     opciones = argumentos.parse_args()
+    load_dotenv()
 
     opciones.salida.mkdir(parents=True, exist_ok=True)
     (opciones.salida / "mensajes_mqtt.md").write_text(
         mensajes_mqtt(opciones.registro), encoding="utf-8"
     )
+    lineas = []
+    if opciones.registro.exists():
+        lineas = opciones.registro.read_text(encoding="utf-8").splitlines()
+    with nueva_sesion() as db:
+        (opciones.salida / "base_de_datos.md").write_text(
+            base_de_datos(db, lineas, opciones.codigo), encoding="utf-8"
+        )
     with httpx.Client(base_url=opciones.url, timeout=30) as api:
         (opciones.salida / "consultas_http.md").write_text(
             consultas_http(api, opciones.codigo), encoding="utf-8"

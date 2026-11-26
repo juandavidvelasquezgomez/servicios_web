@@ -1,35 +1,30 @@
 # Evidencias de funcionamiento
 
-**Estado: pendientes.** Todavía no se ha ejecutado la aplicación contra la base de datos del
-curso.
+**Estado: pendientes las evidencias con datos reales.** Todavía no se ha ejecutado la
+aplicación contra la base de datos del curso. [pruebas_automaticas.txt](pruebas_automaticas.txt)
+muestra las validaciones y los endpoints con datos simulados en SQLite; no reemplaza las
+evidencias exigidas.
 
 ## Cómo generarlas
 
-1. Completar `.env` e iniciar `uvicorn app.main:app`.
-2. Dejarlo recibiendo datos **al menos 20 minutos**.
-3. En otra terminal, con el entorno activado:
+1. Completar `.env` y verificar con `python -m app.database.connection`.
+2. Iniciar `uvicorn app.main:app` y dejarlo recibiendo datos **al menos 20 minutos**.
+3. Sin detenerlo, en otra terminal con el entorno activado:
 
 ```powershell
 python scripts/generar_evidencias.py --codigo GAS-002
 ```
 
-Se crean `consultas_http.md` (pruebas 8 a 17, con solicitud, código y respuesta) y
-`mensajes_mqtt.md` (pruebas 1 a 7, con las líneas del registro y la duración de la captura).
+Se crean tres archivos:
 
-4. Para la prueba 2, agregar una captura de la tabla en PostgreSQL:
+| Archivo | Pruebas | Contenido |
+|---|---|---|
+| `mensajes_mqtt.md` | 1 a 7 | Líneas del registro y duración de la captura |
+| `base_de_datos.md` | 2 a 7 y 17 | Filas almacenadas y comprobación de que los rechazados no se guardaron |
+| `consultas_http.md` | 8 a 17 | Solicitud, código HTTP y respuesta |
 
-```sql
-SELECT m.id, sm.magnitud, sm.unidad, m.valor, m.timestamp_utc, m.fecha_recepcion
-FROM mediciones m
-JOIN sensor_magnitudes sm ON sm.id = m.sensor_magnitud_id
-JOIN sensores s ON s.id = sm.sensor_id
-WHERE s.codigo = 'GAS-002'
-ORDER BY m.id DESC
-LIMIT 10;
-```
-
-Para las pruebas 3 a 7, comprobar con esa consulta que el mensaje rechazado no tiene registros
-con su `timestamp`. Si el sensor no envía algún caso, quedará marcado como pendiente.
+4. Revisar que no haya casos marcados como pendientes (si el sensor aún no los ha enviado,
+   dejar la captura más tiempo y volver a generar) y subir los archivos con un commit.
 
 ## Índice de pruebas
 
