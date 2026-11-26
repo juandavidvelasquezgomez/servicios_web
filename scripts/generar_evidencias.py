@@ -162,6 +162,7 @@ def base_de_datos(db: Session, lineas: list[str], codigo: str) -> str:
         )
     partes += [
         "\n## Mensajes rechazados que no se almacenaron\n",
+        "0 registros confirma el rechazo (otro mensaje válido con la misma hora sí contaría).\n",
         "| Prueba | timestamp del mensaje | Registros con ese timestamp |",
         "|---|---|---|",
     ]
